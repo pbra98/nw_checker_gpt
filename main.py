@@ -65,15 +65,19 @@ def ping_site(site: str, count: int = 1, timeout: int = 1) -> Optional[float]:
     If the host cannot be reached, ``None`` is returned.
     """
 
-    if platform.system().lower() == "windows":
+    is_windows = platform.system().lower() == "windows"
+    if is_windows:
         cmd = ["ping", "-n", str(count), "-w", str(timeout * 1000), site]
     else:
         cmd = ["ping", "-c", str(count), "-W", str(timeout), site]
 
     output = _run_command(cmd)
 
-    # Attempt to extract the average time from the summary line.
-    match = re.search(r"= [^/]+/([0-9.]+)/", output)
+    if is_windows:
+        match = re.search(r"Average = (\d+(?:\.\d+)?)ms", output)
+    else:
+        match = re.search(r"= [^/]+/([0-9.]+)/", output)
+
     if match:
         try:
             return float(match.group(1))
@@ -85,17 +89,21 @@ def ping_site(site: str, count: int = 1, timeout: int = 1) -> Optional[float]:
 def trace_site(site: str, max_hops: int = 20) -> List[Tuple[int, float]]:
     """Run a traceroute to *site* and return a list of hop latencies."""
 
-    tracer = "tracert" if platform.system().lower() == "windows" else "traceroute"
-    cmd = [tracer, "-m", str(max_hops), site]
+    is_windows = platform.system().lower() == "windows"
+    tracer = "tracert" if is_windows else "traceroute"
+    if is_windows:
+        cmd = [tracer, "-h", str(max_hops), site]
+    else:
+        cmd = [tracer, "-m", str(max_hops), site]
     output = _run_command(cmd)
 
     hops: List[Tuple[int, float]] = []
     for line in output.splitlines():
         # Match the hop number and the first latency reported on that line.
-        match = re.match(r"\s*(\d+)\s+.*?(\d+(?:\.\d+)?)\s*ms", line)
+        match = re.match(r"\s*(\d+)\s+.*?((?:<)?\d+(?:\.\d+)?)\s*ms", line)
         if match:
             hop = int(match.group(1))
-            latency = float(match.group(2))
+            latency = float(match.group(2).lstrip("<"))
             hops.append((hop, latency))
     return hops
 
